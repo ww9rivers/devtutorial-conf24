@@ -14,3 +14,5 @@ check_basic_readme:
   comment: expected
 check_for_binary_files_without_source_code:
   comment: expected
+check_for_compiled_python:
+  comment: expected
