@@ -33,11 +33,6 @@ jobs:
       
       - name: Create package
         run: ucc-gen package --path output/devtutorial_conf24 -o app-dir/
-
-      - name: Debug Workspace Contents
-        run: |
-          ls -la .
-          ls -la app-dir/
       
       - name: Upload package
         uses: actions/upload-artifact@v4
@@ -60,8 +55,6 @@ jobs:
 
       - name: Install system packages
         run: |
-          echo "github.ref: ${{ github.ref }}"
-          echo "github.event.ref: ${{ github.event.ref }}"
           sudo apt update -qq
           sudo apt install -y python3-pip
           sudo pip install splunk-appinspect
@@ -72,11 +65,6 @@ jobs:
           ls -la app-dir/
           FILE_NAME=$(ls -1 app-dir/)
           splunk-appinspect inspect app-dir/$FILE_NAME --output-file appinspect_result.json --mode test
-
-      - name: Check contents
-        run: |
-          ls -la app-dir/
-          ls -la .
 
       - name: Upload appinspect report
         uses: actions/upload-artifact@v4
