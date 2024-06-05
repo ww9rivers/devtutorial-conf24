@@ -22,8 +22,8 @@ docker run --rm -d -p 8000:8000 -p 8089:8089 -e "SPLUNK_START_ARGS=--accept-lice
 docker ps
 
 echo -e "\033[92m Obtaining Splunk Host Address...\033[0m"
-my_cont_ip=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "$CONTAINER_NAME")
-echo "My splunk instance host: $my_cont_ip:8089"
+CONTAINER_IP=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "$CONTAINER_NAME")
+echo "My splunk instance host: $CONTAINER_IP:8089"
 
 echo -e "\033[92m Waiting for splunk to be up...\033[0m"
 
@@ -48,8 +48,9 @@ docker exec -i $CONTAINER_NAME ls -l $APPS_DIR/$APP_ROOT/
 # docker exec -i $CONTAINER_NAME cat $APPS_DIR/$APP_ROOT/default/commands.conf
 
 echo "Installing python packages"
+pip install pytest-splunk-addon
 
-echo "My splunk instance host: $my_cont_ip:8000"
+echo "My splunk instance host: $CONTAINER_IP:8000"
 
 # Check running docker containers
 echo -e "\033[92m Checking running containers... \033[0m"
@@ -60,6 +61,7 @@ docker ps
 loopCounter=30
 mainReady=0
 checked=0
+errors=0
 
 while [[ $loopCounter != 0 && $mainReady != 1 ]]; do
   ((loopCounter--))
@@ -76,17 +78,23 @@ while [[ $loopCounter != 0 && $mainReady != 1 ]]; do
     echo -e "\033[92m APP LIST: $appList\033[0m"
 
     if [[ $checked != 1 ]]; then
+        echo "Creating HEC token..."
+        HEC_TOKEN_OUTPUT=$(docker exec -i -u splunk $CONTAINER_NAME bash -c "SPLUNK_USERNAME=$USER SPLUNK_PASSWORD=$PASSWORD /opt/splunk/bin/splunk http-event-collector create new-token -uri https://$CONTAINER_IP:8089  -disabled 0 -index log")
+        HEC_TOKEN=$(echo "$HEC_TOKEN_OUTPUT" | grep -oP 'token=\K[^ ]+')
+        echo "Generated token: $HEC_TOKEN"
+
         echo -e "\033[92m Checking Splunk endpoints...\033[0m"
 
         echo -e "\033[92m Looking for $APP_ROOT app...\033[0m"
-        curl -k -u $USER:$PASSWORD -i -q https://$my_cont_ip:8089/services/apps/local/?search=$APP_ROOT | grep $APP_ROOT
+        curl -k -u $USER:$PASSWORD -i -q https://$CONTAINER_IP:8089/services/apps/local/?search=$APP_ROOT | grep $APP_ROOT
 
         echo -e "\033[92m Running unit tests...\033[0m"
 
         echo -e "\033[92m Checking if app is installed... \033[0m"
-        if ! curl -k -u $USER:$PASSWORD -i -q https://$my_cont_ip:8089/services/apps/local/?search=$APP_ROOT | grep -q $APP_ROOT; then
+        if ! curl -k -u $USER:$PASSWORD -i -q https://$CONTAINER_IP:8089/services/apps/local/?search=$APP_ROOT | grep -q $APP_ROOT; then
           echo "App $APP_ROOT not found in local apps!"
-          exit 1
+          # exit 1
+          ((errors++))
         fi
         echo -e "\033[92m $APP_ROOT found! \033[0m"
 
@@ -101,29 +109,27 @@ while [[ $loopCounter != 0 && $mainReady != 1 ]]; do
 
         if ! echo "$customSearch" | grep -q "1001"; then
             echo -e "\033[92m Custom search command does not work correctly! \033[0m"
-            exit 1
+            # exit 1
+            ((errors++))
         fi
 
         echo -e "\033[92m Custom search command works correctly! \033[0m"
 
         echo "______________________________________________________________________"
 
-        echo -e "\033[92m Checking if Movies By Rating saved search exists... \033[0m"
-        if ! docker exec -i -u splunk $CONTAINER_NAME bash -c "SPLUNK_USERNAME=$USER SPLUNK_PASSWORD=$PASSWORD /opt/splunk/bin/splunk search '| rest /servicesNS/-/-/saved/searches | table title'" | grep -q "Movies By Rating"; then
+        echo -e "\033[92m Running Knowledge Object Tests... \033[0m"
 
-            docker exec -i -u splunk $CONTAINER_NAME bash -c "SPLUNK_USERNAME=$USER SPLUNK_PASSWORD=$PASSWORD /opt/splunk/bin/splunk search '| rest /servicesNS/-/-/saved/searches| table title'" | grep -q "Movies By Rating"
-
-            echo -e "\033[92m Movies By Rating not found! \033[0m"
-            # exit 1
-        fi
-        echo -e "\033[92m Movies By Rating search found! \033[0m"
+        pytest -v $CI_PROJECT_DIR/tests/knowledge/test_savedsearches.py --splunk-type=external --splunk-app=$CI_PROJECT_DIR/package/ --splunk-data-generator=$CI_PROJECT_DIR/tests/knowledge/ --splunk-host=$CONTAINER_IP --splunk-port=8089 --splunk-user=$USER --splunk-password=$PASSWORD --splunk-hec-token=$HEC_TOKEN
 
         echo "______________________________________________________________________"
 
         echo -e "\033[92m Printing $APP_ROOT configuration... \033[0m"
-        curl -k -u $USER:$PASSWORD -i -q https://$my_cont_ip:8089/services/apps/local/$APP_ROOT
+        curl -k -u $USER:$PASSWORD -i -q https://$CONTAINER_IP:8089/services/apps/local/$APP_ROOT
 
         checked=1
+        if $errors>0; then
+        exit 1
+        fi
     fi
     mainReady=1
   fi
