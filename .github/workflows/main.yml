@@ -1,0 +1,38 @@
+name: build-test-release
+on:
+  push:
+    branches:
+      - main
+      - 'ex*'
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v2
+      
+      - name: Create subfolder
+        run: mkdir my-package
+
+      - name: Install UCC
+        run: |
+          pip install splunk-add-on-ucc-framework
+          pip install splunk-packaging-toolkit
+
+      - name: Build an app using UCC
+        run: ucc-gen build
+
+      - name: Create tmp folder
+        run: mkdir app-dir
+      - name: Create package
+        run: ucc-gen package --path output/devtutorial_conf24 -o app-dir/
+      
+      - name: Upload package
+        uses: actions/upload-artifact@v4
+        with:
+          name: my-package
+          path: app-dir/
