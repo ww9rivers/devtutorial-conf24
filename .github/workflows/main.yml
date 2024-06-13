@@ -109,10 +109,11 @@ jobs:
         run: |
           sudo apt update -qq
           sudo apt-get install -y jq
-          - name: Test On Splunk 9.0
-          run: |
-            chmod +x .github/workflows/app_test.sh
-            .github/workflows/app_test.sh $SPLUNK_VERSION
+
+      - name: Test On Splunk 9.0
+        run: |
+          chmod +x .github/workflows/app_test.sh
+          .github/workflows/app_test.sh $SPLUNK_VERSION
 
   test-v9-2-1:
     needs: build
